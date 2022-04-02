@@ -1,4 +1,4 @@
--- title:  TBD
+-- title:  Hexed
 -- author: Blind Seer Studios
 -- desc:   LD50 - Delay the inevitable
 -- script: lua
@@ -14,7 +14,6 @@ hw,hh=w/2,h/2
 
 title=false
 indicatorsOn=false
-isHuman=true
 --Setup camera coordinates
 cam={
 	x=0,
@@ -28,10 +27,12 @@ cam={
 by an easier name]]
 s={
 	pot=240,
-	thru=2,
 	heart=244,
 	pit=3,
-	duck=290
+	duck=290,
+	check=242,
+	checkact=243,
+	water=224
 }
 --Collision detectors
 --[[These change where the collision detectors are for
@@ -40,9 +41,9 @@ from here. The default is every corner and middle of a
 16x16 sprite. These settings bring the collider detections
 in 1 pixel on the sides and top.]]
 coll={
-	tlx=1, --Defines where the left collider is
+	tlx=3, --Defines where the left collider is
 	tly=1, --Defines where the top collider is
-	trx=14,--Defines where the right collider is
+	trx=11,--Defines where the right collider is
 	cly1=7,--Defines where the left top mid collider is 
 	cly2=8,--Defines where the left bottom mid collider is
 	cry1=7,--Defines where the right top mid collider is
@@ -51,11 +52,11 @@ coll={
 --Player variables
 p={
 	idx=256, --Player sprite
-	x=hw, --initial player location x
-	y=hh, --initial player location y
+	x=16, --initial player location x
+	y=88, --initial player location y
 	vx=0, --Velocity X
 	vy=0, --Velocity Y
-	vmax=1, --Maximum velocity
+	vmax=1, --Maximum velocity for jumping
 	flp=0, --sprite flip
 	grounded=true, --set if the player is on the ground
 	maxLife=2,
@@ -63,8 +64,13 @@ p={
 	damaged=false,
 	ducking=true,
 	canMove=true,
-	hTime=1000,
-	sTime=1000
+	hTime=500,
+	sTime=500,
+	cpX=0,
+	cpY=0,
+	cpF=0,
+	cpA=false,
+	human=true
 }
 --Enemy variables
 e={
@@ -85,22 +91,25 @@ c={
 	a=6,
 	s=7,
 	mxt=0,
-	myt=0
+	myt=0,
 }
 --[[Sets up animations sprites for the map.
 s=animation speed
 f=amount of frames]]
 tileAnims={
 	[240]={s=.05,f=2},
-	[244]={s=.1,f=5}
+	[244]={s=.1,f=5},
+	[208]={s=.1,f=4},
+	[224]={s=.1,f=4}
 }
 
 spawns={
-	[6]=262
+	[255]=262
 }
 
 grav=3.6 --gravity default 3.7
-t=0 --timer for animation
+t=0 --timer for tile animation
+ct=0 --timer for character animation
 timer=0 --timer for blinking damage
 win={}
 maxCoins=0
@@ -133,6 +142,7 @@ if indicatorsOn==true then
 		print("FPS: "..fps:getValue(),w-23,0,14,false,1,true)
 		print("Indicators: " ..tostring(indicatorsOn),0,16,14,false,1,true)
 		print("MaxV: "..flr(p.vy),60,24,14,false,1,true)
+		print("idx: "..p.idx,60,32,14,false,1,true)
 		print("Grounded: "..tostring(p.grounded),60,16,14,false,1,true)
 		print("x: "..p.x,0,24,14,false,1,true)
 		print("y: "..p.y,0,32,14,false,1,true)
@@ -267,10 +277,10 @@ function Main()
 	map(cam.x//8,cam.y//8,31,18,-(cam.x%8),-(cam.y%8),0,1,remap)
 	if p.damaged then --If the player is damaged blink the player
 		if (time()%300>200) then
-			spr(p.idx,p.x-cam.x,p.y-cam.y,7,1,p.flp,0,2,2)
+			spr(p.idx,p.x-cam.x,p.y-cam.y,0,1,p.flp,0,2,2)
 		end
 	else
-		spr(p.idx,p.x-cam.x,p.y-cam.y,7,1,p.flp,0,2,2)
+		spr(p.idx,p.x-cam.x,p.y-cam.y,0,1,p.flp,0,2,2)
 	end
 	--[[Scrolling only along X but loading full map grid 
 		on Y. This breaks enemy map placement.]]
@@ -295,6 +305,7 @@ function Main()
 	end
 	
 	t=t+1
+	ct=ct+1
 end
 
 function Update()
@@ -302,25 +313,27 @@ function Update()
 	if notDead then
 		Player()
 	end
-	Enemy()
+	CheckPoint()
+	--Enemy()
 	ShakeScreen()
 	Collectiables()
 	Blinky()
+	Dead()
 end
 
 function Player()
 	--Set controls to move the player
-	if p.canMove and p.grounded then
+	if p.canMove then
 		if btn(c.l) and not p.ducking then
 			p.vx=-p.vmax
 			p.idx=288+t%60//10*2
 			p.flp=1
-			t=time()//9
+			ct=time()//9
 		elseif btn(c.r) and not p.ducking then
 			p.vx=p.vmax
 			p.idx=288+t%60//10*2
 			p.flp=0
-			t=time()//9
+			ct=time()//9
 		else
 			p.vx=0
 			p.idx=256+t%40//10*2
@@ -398,19 +411,31 @@ function Player()
 																solid(p.x+coll.trx+p.vx,p.y+coll.tly+p.vy,1) or
 																solid(p.x+7+p.vx,p.y+coll.tly+p.vy,1) or
 																solid(p.x+8+p.vx,p.y+coll.tly+p.vy,1)) then
-		fset(s.thru,1,false)
+		fset(2,1,false)
+		fset(3,1,false)
+		fset(4,1,false)
+		fset(5,1,false)
 	end
 	
 	--[[if the sprite is tile 2 and has flag 2 either set
 	as true or false]]
 	if p.grounded==true and not btnp(c.d) then
-		fset(s.thru,1,true)
+		fset(2,1,true)
+		fset(3,1,true)
+		fset(4,1,true)
+		fset(5,1,true)
 	elseif p.grounded==true then
-		fset(s.thru,1,false)
+		fset(2,1,false)
+		fset(3,1,false)
+		fset(4,1,false)
+		fset(5,1,false)
 	end
 	
 	if p.vy>=1.5 then
-		fset(s.thru,1,true)
+		fset(2,1,true)
+		fset(3,1,true)
+		fset(4,1,true)
+		fset(5,1,true)
 	end
  --Apply motion to player
 	p.x=p.x+p.vx
@@ -421,32 +446,55 @@ function Player()
 	elseif p.x>cam.mapEnd-8 then
 		p.x=cam.mapEnd-8
 	end
-	
+
 	if p.hTime>=0 then
-		p.hTime=flr(p.hTime-time()//1000)
+		p.hTime=flr(p.hTime-1/1000)
 		print(p.hTime,0,0,7)
 	end
 	
 	if p.hTime<=0 then
+		p.human=false
 		p.idx=320+t%40//10*2
-		p.sTime=flr(p.sTime-time()//1000)
+		p.sTime=flr(p.sTime-1/1000)
 		print(p.sTime,0,0,7)
 	end
 	
 	if p.sTime<=0 then
 		p.sTime=0
 		Dead()
+		notDead=false
 	end
 	--Pit()
 end
 
 function Dead()
-	p.canMove=false
-	p.idx=328
-	AddWin(w/2,h/2-30,64,24,4,"You Died!\nPress A to\ncontinue.")
+	if not notDead then
+		p.canMove=false
+		p.idx=328
+		AddWin(w/2,h/2-30,64,24,2,"You Died!\nPress A to\ncontinue.")
+		if btnp(c.z) then
+			p.x=p.cpX
+			p.y=p.cpY
+			p.canMove=true
+			notDead=true
+			p.hTime=500
+			p.sTime=500
+			p.human=true
+		end
+	end
 	--if p.curLife<=0 then
 	--	GameOver()
 	--end
+end
+
+function CheckPoint()
+	if mget(p.x//8+1,p.y//8+1)==s.check then
+		mset(p.x//8+1,p.y//8+1,s.checkact)
+		p.cpX=flr(p.x)
+		p.cpY=flr(p.y)
+		p.cpF=p.flp
+		p.cpA=true
+	end
 end
 --Define the variables for the bads table
 function AddBad(t)
@@ -530,14 +578,14 @@ function Pit()
 end
 
 function Collectiables()
-	--[[Collisions with collectibles can be done either with
-	flags set on the sprites, or by looking for the actual
-	sprite itself.]] 
-	--if fget(mget(p.x/8+1,p.y/8+1),1) then
 	if mget(p.x//8+1,p.y//8+1)==s.pot or mget(p.x//8,p.y//8)==s.pot then
 	 mset(p.x//8+1,p.y//8+1,0)
 		mset(p.x//8,p.y//8,0)
-		p.hTime=p.hTime+1000
+		if p.human then
+			p.hTime=p.hTime+100
+		else
+			p.sTime=p.sTime+100
+		end
 	--sfx(01,'E-6',5)
 	end
 	if mget(p.x/8+1,p.y/8+1)==s.heart and p.curLife<2 then
@@ -661,7 +709,7 @@ function AddWin(x,y,w,h,col,txt)
 		table.insert(win,i,#win)
 	end
 	rect(x-w/2,y-h/2,w,h,col)
-	rectb(x-w/2+1,y-h/2+1,w-2,h-2,1) --no idea but it works
+	rectb(x-w/2+1,y-h/2+1,w-2,h-2,0) --no idea but it works
  print(txt,x-w/2+3,y-h/2+3,0,0,1,true)
 end
 
@@ -697,11 +745,10 @@ end
 fps=FPS:new()
 -- <TILES>
 -- 000:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 001:7777777777777777777777777777777777777777777777777777777777777777
--- 002:77777777ffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 003:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 004:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 005:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 002:c6656665c55c6c6ccccc555fc66fffff56ffffff5fffffffffffffffffffffff
+-- 003:66656665555c555cffffffffffffffffffffffffffffffffffffffffffffffff
+-- 004:666566656c6c555c555fffffffffffffffffffffffffffffffffffffffffffff
+-- 005:c665566cc55c666cffccccccfffff66cffffff65fffffff5ffffffffffffffff
 -- 006:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 007:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 008:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -709,89 +756,86 @@ fps=FPS:new()
 -- 010:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 011:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 012:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 013:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 014:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 015:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 016:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 017:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 018:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 019:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 020:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 021:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 022:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 023:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 024:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 025:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 013:fffffffffffffffffffffffffffffffffffffff2ffffff2ffff2f2f2ff222f22
+-- 014:fff2ffffff2f2ffff2f2f2ff2f222f22f2f2f2f22f2f222ff2f2f2f22f222222
+-- 015:ffffffffffffffffffffffff22fffffff2ffffff222ffffff2ffffff222ff22f
+-- 016:aaaaababbaaaaaaaaaa00000aa000c00aa00c0c0ba0c0000aa00c000ba000000
+-- 017:abaababbaaabaaaaaaaaaaaa0000000000c0c0c0000000000000000000000000
+-- 018:abbbabbbaaaaaaaa000000000c0c0c0000c0c0c0000000000000000000000000
+-- 019:aabbabbaabbaabba0000aaaa0c00000000c0c0c0000000000000000000000000
+-- 020:aaababaababbabaabaaa0aaa000000ab00c000aa0c0c00aa00c000aa000000aa
+-- 021:6767566677665666665000006600005566000055560000006605500066055000
+-- 022:6676665666666666056665005000000550000000000000000000000000000000
+-- 023:6656666666666666056665000000005500000005000000000000000000000000
+-- 024:6666676566666666056665005000005550000055000000000000000000000000
+-- 025:6666766566666655005665555000055550000055000000560000006500055055
 -- 026:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 027:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 028:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 029:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 030:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 031:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 032:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 033:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 034:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 035:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 036:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 037:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 038:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 039:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 040:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 041:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 042:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 043:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 044:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 045:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 046:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 029:f2f2f2f2ff2f2f2ffff2f2f2ff222f22f2f2fff2ff2f22f2fff2f2fffff2222f
+-- 030:f2f2f2f2222f2222f2f2f22222222222f2f2f2f22f222222fff2f22222f22222
+-- 031:f2f222f222222222f222f222222ff22f2fffffff2fffffff2fffffffffffffff
+-- 032:aa000000aa0c0000ba000000ba0c0000aa000000ba0c0000aa000000ba000000
+-- 033:00000000000c0c0000c0c0c00c000c0000c0c0c00c0c0c0000c000c000000000
+-- 034:000000000c0c0000000000000c000000000000c000000c000000c0c000000000
+-- 035:000000000c000c000000c0c000000c00000000c00c00000000c0000000000000
+-- 036:00000abb000c0aab00c00aaa000c0aab00c00aaa000c0aaa00c00aaa00000aaa
+-- 037:6605500066500000666000006660000066600000565000006605500066055000
+-- 038:0000000005550000055500000565000000000000000005500000055000000000
+-- 039:0000000000000000000500000000000000550000005500500000000000000000
+-- 040:0000000000000000000005500005055000000000000000000005000000000000
+-- 041:0005505500055056000006550000055500000556000005550000065500055055
+-- 042:ffffaafafaa9aaaafaaa9bbaf9aaabbbaa9aaaaaaaaabbbaaaabbbabfabbbabb
+-- 043:affbbfaaaaabbbaaaaaabbaaabbaaaaaabbbabbabbbbbbbabbbbbbaabbbbbbba
+-- 044:ffaaffffa9aaa9ffaa9aa99faaaaa99faaaa999faaaaa999bbbbaa99bbbbaa9f
+-- 045:fffff2f2fffffff2ffffffffffffffffffffffffffffffffffffffffffffffff
+-- 046:222f22ff222f222222ff2222fffff22fffffffffffffffffffffffffffffffff
 -- 047:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 048:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 049:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 050:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 051:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 052:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 053:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 054:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 055:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 056:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 057:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 058:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 059:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 060:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 061:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 048:aa000000aa0c0000aaa0c000baac0000aaa0c000baac0000aaa0c000ba000000
+-- 049:fffffffffffffffffffffffffffffffffffbfffffffbfffffbfbfbfffafafaff
+-- 050:ffffffffffff4ffffff323ffff24744ffff323ffffff1ffffffabfffffffafff
+-- 051:fffffffffffffffffffffffffffffffffffffffffaaafffffaaaabafaaaaaaa9
+-- 052:000000aa000c00aa00c000aa000000aa000000aa000c00aa00c000aa000000aa
+-- 053:7605500076000000650000005600005566000055665000006555555556555555
+-- 054:0000000000000000000000005000000050000005055555005555555555655555
+-- 055:0000000000000000000000005000005550000055055555005555555555565555
+-- 056:0000000000000000000000000000005550000055055555005555555555555565
+-- 057:0005505600055065000000565000005550000055000005665565566550000000
+-- 058:faaaabbbaaaabbbaaa9bbbaaf9abbaaaaaaaaaabaaaa9aaaaaa9aaaaf99aaaaa
+-- 059:bbbbbbbbbbbbbbaaabbabbabaaabbbabbbabbaaabbabaabbabaaaabbaaaaaaab
+-- 060:abbba9ffaabb999fba9a999fbbacc99fbbaa99ffaaaaa99fb9aaaa99baccc999
+-- 061:ff6655ffff6666ffff6666ffff6666ffff6666ffff6766ffff6766ffff6766ff
 -- 062:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 063:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 064:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 065:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 066:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 067:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 068:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 069:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 070:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 071:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 072:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 073:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 074:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 075:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 076:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 077:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 078:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 064:aa000000aa0c0000ba00c000ba000000aa00c000ba0c0000aa00c000ba000000
+-- 068:000000aa000c00aa000000aa000c0aaa00000aaa000c0aaa00c00aaa000000aa
+-- 069:ffffffffffffffffffbbfffffafffbbffaffffaffaffffaffafaffaff9f9ff9f
+-- 070:fffffffffffffffffffffffffffbffffffafffffffafffffffafafffff9fafff
+-- 071:fffffffffffffffffffaffffffbfafffffffafffffffafffffff9fffffff9fff
+-- 072:0000000000000000000000000000000000000000000000000000009a000000aa
+-- 073:000000000000000000000000000000000000000000000000a9000000aa000000
+-- 074:f99aacaa999999ca99999aa999f99aaaff9999aaf999f999f99ffff9ffffffff
+-- 075:999aaaca9aa9aa9c9aaa999999aa99aa9cc999aaccc9959acc5995f9ff6555ff
+-- 076:aac9aaffaaa9aaafcaa99aafccc999ffacc99ccfa999cccf999fccffffffffff
+-- 077:ff6766ffff7766ffff7766ffff7776ffff6776ffff6766ffff6766ffff6766ff
+-- 078:ff6766ffff7766ffff7776ffff7776ffff7766fff777677f7776677777666677
 -- 079:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 080:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 081:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 082:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 083:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 084:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 085:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 086:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 080:aa000000aa0c0000ba00c000ba0c0c00aa00c0c0baa00000baaaaaaaaaaabbaa
+-- 081:00000000000000000000000000c0c0c00c0c0c0000000000aaaaaaaaaaaaaaaa
+-- 082:00000000000000000000000000c0c0c0000000000a0aaaa0aaaaaaaaaaabaaaa
+-- 083:00000000000000000000000000c0c0c00c0c0c0000000000aaaaaaaaaaaaaaab
+-- 084:000000aa00c00aaa000c0aab00c00aaa0c0c00aa00000caaaaaaaaaaaaaaaaaa
+-- 085:ffffffffffffffffffffffffffffffffffffffffffff677ff276766f67766655
+-- 086:ffffffffffffffffffffffffffffffffffffffffffff155ff251511f15511155
 -- 087:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 088:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 089:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 090:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 091:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 092:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 093:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 094:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 095:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 088:000000aa0000009a000000000000000000000000000000000000000000000000
+-- 089:990000009a000000000000000000000000000000000000000000000000000000
+-- 090:fffffffffffffff9fffffff9ffff9ff9ffff99ffffff999bffff9a9bffff9aab
+-- 091:fffafffffffaafff9ffaaaff99faaaafa999abaaaa99bbaabaabbbabbbabbaaa
+-- 092:fafffffffbaffffafbbaffababbbaabbaabbabbbaaababbabbaaabaabbbaaaab
+-- 093:affaffffaffaafff9f9aaaff999aaaafa999abaaaa99bbaaaaabbbabbbabbaaa
+-- 094:fafffffffbaffffffbbaffffabbbaffaaabbafabaaabaabbbbaaabbbbbbaabba
+-- 095:ffffffffffffffffafffffffaff9ffffaf99ffffa999ffffa999afffaa9aafff
 -- 096:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 097:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 098:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -802,12 +846,12 @@ fps=FPS:new()
 -- 103:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 104:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 105:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 106:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 107:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 108:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 109:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 110:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 111:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 106:f9999aaaff9999aafff99bbbfffaaabb9999aaabf9999aaaff999999ffffff99
+-- 107:bbabaaaaabaaabbbaaaabbbabaabbb99bb9aaaa999aaaaaa9aaa99aa99999999
+-- 108:abbbaabbaaaaabbbaabbbaaaabbbaabbbbbaaaab9999aaaaa99aaaaa99aaa999
+-- 109:baabaaaaaaaaabbbaaaabbbabaabbbaabbaaaaaabbbaaaaa9aaa99aa99999999
+-- 110:abbbabaaaaaaaaaba9aaaabba9aa9bbb99a9a99a9999aaaaa99aaaaa99aaa999
+-- 111:aaaaa99fbbaa99ffb9a99fffa999aaafa99aaaff99aaa999a999999f999999ff
 -- 112:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 113:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 114:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -904,10 +948,10 @@ fps=FPS:new()
 -- 205:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 206:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 207:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 208:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 209:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 210:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 211:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 208:ffffffffffffffffffffffffffffffff992999299999999999999999a9a9a9a9
+-- 209:ffffffffffffffffffffffffffffffff999299929999999999999999a9a9a9a9
+-- 210:ffffffffffffffffffffffffffffffff299929999999999999999999a9a9a9a9
+-- 211:ffffffffffffffffffffffffffffffff992999929999999999999999a9a9a9a9
 -- 212:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 213:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 214:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -920,10 +964,10 @@ fps=FPS:new()
 -- 221:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 222:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 223:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 224:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 225:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 226:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 227:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 224:99999999a9a9a9a99a9a9a9aaaa9aaa99a929a9aaaaaaaaaaaaaaa2aa2aaaaaa
+-- 225:99999999a9a9a9a99a9a9a9aaaa2aaa99a9a9a9aa2aaaa2aaaaaaa9aaaaaaaaa
+-- 226:99999999a9a9a9a99a929a9aaaa9aaa9929a9a2aaaaaaaaaaaaaaa9aaaaaaaaa
+-- 227:99999999a9a2a9a99a9a9a9aa2a9aa299a9a9a9aaaaaaaaaaaaaaa9aaaaaaaaa
 -- 228:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 229:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 230:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -936,10 +980,10 @@ fps=FPS:new()
 -- 237:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 238:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 239:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 240:fffffffff111111fff1441ffff1221fff124421f1244442112222221f111111f
--- 241:f111111fff1441ffff1221fff124421f1244442112222221f111111fffffffff
--- 242:f23ffffff23ffffff23ffffff23ffffff23ffffff23ffffff11fffff1111ffff
--- 243:f211fffff21311fff213331ff213311ff2111ffff21ffffff11fffff1111ffff
+-- 240:fffffffffccccccfffcffcffffc77cfffc7887cfc788887cc777777cfccccccf
+-- 241:fccccccfffcffcffffc77cfffc7887cfc788887cc777777cfccccccfffffffff
+-- 242:f12ffffff12ffffff12ffffff12ffffff12ffffff12ffffffccfffffccccffff
+-- 243:f1ccfffff1c2ccfff1c222cff1c22ccff1cccffff1cffffffccfffffccccffff
 -- 244:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 245:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 -- 246:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -955,272 +999,109 @@ fps=FPS:new()
 -- </TILES>
 
 -- <SPRITES>
--- 000:7777777777777777777777777777771177777123777712327777122477771244
--- 001:7777777777777777777777771117777733317777333317774443177744417777
--- 002:7777777777777777777777777777777777777711777771237777123277771224
--- 003:7777777777777777777777777777777711177777333177773333177744431777
--- 004:7777777777777777777777777777777777777711777771237777123277771224
--- 005:7777777777777777777777777777777711177777333177773333177744431777
--- 006:7777777777777777777777777777771177777123777712327777122477771244
--- 007:7777777777777777777777771117777733317777333317774443177744417777
--- 008:7777777777777777777777117777713377771323771112327143122371431244
--- 009:7777777777777777111777773331777733331777333311773333341744443417
--- 010:7777777777777777777777777777777777777777777777117777712377771232
--- 011:7777777777777777777777777777777777777777111777773331777733331777
--- 012:7777777777777777777777777777777777777777777777777777777777777777
--- 013:7777777777777777777777777777777777777777777777777777777777777777
--- 014:7777777777777777777777777777777777777777777777777777777777777777
--- 015:7777777777777777777777777777777777777777777777777777777777777777
--- 016:7777123477771334777132237713322377144223771432227771122177771221
--- 017:4441777744417777332317773323317733244177222341771221177712217777
--- 018:7777124477771234777133347713322377144223771432237771122277771221
--- 019:4441777744417777444317773323317733244177332341772221177712217777
--- 020:7777124477771234777713347771322377133223771442237714322277711221
--- 021:4441777744417777444177773323177733233177332441772223417712211777
--- 022:7777124477771334777712237771322377133223771442227714322177711221
--- 023:4441777744417777332177773323177733233177222441771223417712211777
--- 024:7713333477713223777712237777122377771222777771227777771277777771
--- 025:4443317733231777332177773321777722221777212221771712177777717777
--- 026:7777122477771244777712347771322377133223714412237143122177111221
--- 027:4443177744417777444177773323177733233177332144171221341712211177
--- 028:7777777777777777777777777777777777777777777777777777777777777777
--- 029:7777777777777777777777777777777777777777777777777777777777777777
--- 030:7777777777777777777777777777777777777777777777777777777777777777
--- 031:7777777777777777777777777777777777777777777777777777777777777777
--- 032:7777777777777777777777117777712377771232777712247777124477771234
--- 033:7777777777777777111777773331777733331777444317774441777744417777
--- 034:7777777777777777777777777777777777777711777771237777123277771224
--- 035:7777777777777777777777777777777711177777333177773333177744431777
--- 036:7777777777777777777777777777771177777123777712327777122477771244
--- 037:7777777777777777777777771117777733317777333317774443177744417777
--- 038:7777777777777777777777117777712377771232777712247777124477771234
--- 039:7777777777777777111777773331777733331777444317774441777744417777
--- 040:7777777777777777777777777777777777777711777771237777123277771224
--- 041:7777777777777777777777777777777711177777333177773333177744431777
--- 042:7777777777777777777777777777771177777123777712327777122477771244
--- 043:7777777777777777777777771117777733317777333317774443177744417777
--- 044:7777777777777777777777777777777777777777777777777777777777777777
--- 045:7777777777777777777777777777777777777777777777777777777777777777
--- 046:7777777777777777777777777777777777777777777777777777777777777777
--- 047:7777777777777777777777777777777777777777777777777777777777777777
--- 048:7777133477713223777133447777134377771222777122217771221777771177
--- 049:4441777733217777332317773324177722221777112221777712217777711777
--- 050:7777124477771234777713347771322377713344777713437771222177712217
--- 051:4441777744417777444177773321777733231777332217771122177771221777
--- 052:7777123477771334777132237713322377144223771432227771122177771221
--- 053:4441777744417777332317773323317733244177222341771221177712217777
--- 054:7777133477713223771332237144122371431222771171227777771277777771
--- 055:4441777733231177332344173321341722211177221777772177777717777777
--- 056:7777124477771234777713347771322377133223714412237143122277117122
--- 057:4441777744417777444177773323117733234417332134172221117722177777
--- 058:7777123477771334777132237713322377144223771432227771122177771221
--- 059:4441777744417777332317773323317733244177222341771221177712217777
--- 060:7777777777777777777777777777777777777777777777777777777777777777
--- 061:7777777777777777777777777777777777777777777777777777777777777777
--- 062:7777777777777777777777777777777777777777777777777777777777777777
--- 063:7777777777777777777777777777777777777777777777777777777777777777
--- 064:7777777777777777777777777777777777777777777744447774444477744433
--- 065:7777777777777777777777777777777777777777444477773333377733333777
--- 066:7777777777777777777777777777777777777444777444447774443377334443
--- 067:7777777777777777777777777777777744477777333337773333377733333377
--- 068:7777777777777777777777777777774477774444777443337774443377334444
--- 069:7777777777777777777777774477777733337777333337773333377744433377
--- 070:7777777777777777777777777777777777777444777444447774443377334443
--- 071:7777777777777777777777777777777744477777333337773333377733333377
--- 072:7777777777777777777777777777777777777777777777777777777777777777
--- 073:7777777777777777777777777777777777777777777777777777777777777777
--- 074:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 075:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 076:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 077:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 078:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 079:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 080:7733444377333423733322127322222273222222722222227722222277771121
--- 081:4433337734233377221233372222213722222137222211172211117711117777
--- 082:7733344473332422732222127322222273222222722222227722222277771121
--- 083:4443337724223337221222372222213722221137222111172211117711117777
--- 084:7733242277322212773222227732222277222222772222227771112177777111
--- 085:2422337722122377222213772222137722211277221112771111177711177777
--- 086:7733342473332212732222227322222273222222722222227722222277771121
--- 087:4423337722123337222222372222213722221137222111172211117711117777
--- 088:7777777777777777777777777774444477334443732222227322222277222222
--- 089:7777777777777777777777773333377733333377222222372222113722111177
--- 090:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 091:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 092:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 093:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 094:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 095:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 096:7777777777777777777777777777777777777777777744447774444477744433
--- 097:7777777777777777777777777777777777777777444477773333377733333777
--- 098:7777777777777777777777777777777777777777777774447774444477744433
--- 099:7777777777777777777777777777777777777777444777773333337733333377
--- 100:7777777777777777777777777777777777777777777777777744444474443333
--- 101:7777777777777777777777777777777777777777777777774433377733333377
--- 102:7777777777777777777777777777777777777777777774447774443377444333
--- 103:7777777777777777777777777777777777777777444777773333337733333377
--- 104:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 105:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 106:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 107:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 108:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 109:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 110:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 111:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 112:7733444377333333733322227322222273222222722222227722222277771121
--- 113:4433337733342377222213372222213722222137222211172211117711117777
--- 114:7733444377333333733322227322222273222222722222227722222277771121
--- 115:3443333733334237222221332222221322222213222221122221111711111777
--- 116:3344434333333333332222222222222222222222222222222222222277112111
--- 117:3443333733334237222221332222221322222213222221112221111711111777
--- 118:7334443373333333333222223222222232222222222222227222222277711211
--- 119:3443333733334237222221332222221322222213222221112221111711111777
--- 120:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 121:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 122:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 123:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 124:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 125:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 126:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 127:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 128:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 129:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 130:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 131:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 132:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 133:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 134:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 135:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 136:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 137:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 138:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 139:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 140:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 141:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 142:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 143:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 144:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 145:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 146:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 147:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 148:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 149:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 150:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 151:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 152:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 153:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 154:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 155:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 156:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 157:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 158:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 159:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 160:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 161:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 162:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 163:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 164:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 165:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 166:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 167:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 168:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 169:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 170:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 171:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 172:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 173:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 174:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 175:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 176:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 177:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 178:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 179:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 180:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 181:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 182:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 183:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 184:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 185:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 186:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 187:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 188:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 189:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 190:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 191:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 192:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 193:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 194:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 195:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 196:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 197:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 198:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 199:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 200:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 201:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 202:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 203:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 204:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 205:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 206:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 207:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 208:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 209:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 210:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 211:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 212:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 213:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 214:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 215:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 216:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 217:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 218:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 219:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 220:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 221:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 222:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 223:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 224:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 225:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 226:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 227:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 228:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 229:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 230:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 231:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 232:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 233:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 234:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 235:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 236:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 237:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 238:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 239:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 240:fffffffff22ff21f2222222122222221f222221fff2221fffff21fffffffffff
--- 241:fffffffff11ff11f1331132113333321f133321fff1321fffff11fffffffffff
--- 242:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 243:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 244:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 245:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 246:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 247:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 248:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 249:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 250:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 251:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 252:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 253:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 254:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
--- 255:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+-- 000:0000000000000000000000cc00000c560000c5650000c5580000c5880000c5e8
+-- 001:0000000000000000ccc00000666c00006666c0008886c000888c0000888c0000
+-- 002:000000000000000000000000000000cc00000c560000c5650000c5580000c588
+-- 003:000000000000000000000000ccc00000666c00006666c0008886c000888c0000
+-- 004:000000000000000000000000000000cc00000c560000c5650000c5580000c588
+-- 005:000000000000000000000000ccc00000666c00006666c0008886c000888c0000
+-- 006:0000000000000000000000cc00000c560000c5650000c5580000c5880000c5e8
+-- 007:0000000000000000ccc00000666c00006666c0008886c000888c0000888c0000
+-- 008:00000000000000cc00000c660000c65600ccc5650c8ec5560c8ec58800ceeee8
+-- 009:00000000ccc00000666c00006666c0006666cc00666668c0888868c088866c00
+-- 010:0000000000000000000000000000000000000000000000cc00000c560000c565
+-- 011:0000000000000000000000000000000000000000ccc00000666c00006666c000
+-- 016:0000cee8000cedde00ceedde00c88dde00c87ddd000ccddc0000cddc00000cc0
+-- 017:888c0000eedec000eedeec00eed88c00ddd78c00cddcc000cddc00000cc00000
+-- 018:0000c5e8000ceee800ceedde00c88dde00c87dde000ccddd0000cddc00000cc0
+-- 019:888c0000888ec000eedeec00eed88c00eed78c00dddcc000cddc00000cc00000
+-- 020:0000c5e80000cee8000cedde00ceedde00c88dde00c87ddd000ccddc00000cc0
+-- 021:888c0000888c0000eedec000eedeec00eed88c00ddd78c00cddcc0000cc00000
+-- 022:0000cee80000cdde000cedde00ceedde00c88ddd00c87ddc000ccddc00000cc0
+-- 023:888c0000eedc0000eedec000eedeec00ddd88c00cdd78c00cddcc0000cc00000
+-- 024:000cedde0000cdde0000cdde0000cddd00000cdd000000cd0000000c00000000
+-- 025:eed6c000eedc0000eedc0000ddddc000dcdddc00c0cdc000000c000000000000
+-- 026:0000c5580000c5880000c5e8000cedde00ceedde0c88cdde0c87cddc00cccccc
+-- 027:8886c000888c0000888c0000eedec000eedeec00eedc88c0cddc78c0cccccc00
+-- 032:00000000000000cc00000c560000c5650000c5580000c5880000c5e80000cee8
+-- 033:00000000ccc00000666c00006666c0008886c000888c0000888c0000888c0000
+-- 034:000000000000000000000000000000cc00000c560000c5650000c5580000c588
+-- 035:000000000000000000000000ccc00000666c00006666c0008886c000888c0000
+-- 036:0000000000000000000000cc00000c560000c5650000c5580000c5880000c5e8
+-- 037:0000000000000000ccc00000666c00006666c0008886c000888c0000888c0000
+-- 038:00000000000000cc00000c560000c5650000c5580000c5880000c5e80000cee8
+-- 039:00000000ccc00000666c00006666c0008886c000888c0000888c0000888c0000
+-- 040:000000000000000000000000000000cc00000c560000c5650000c5580000c588
+-- 041:000000000000000000000000ccc00000666c00006666c0008886c000888c0000
+-- 042:0000000000000000000000cc00000c560000c5650000c5580000c5880000c5e8
+-- 043:0000000000000000ccc00000666c00006666c0008886c000888c0000888c0000
+-- 048:000cedde000cee880000ce870000cddd000cdddc000cddc00000cc0000000000
+-- 049:eedc0000eedec000eed8c000ddddc000ccdddc0000cddc00000cc00000000000
+-- 050:0000c5e80000cee8000cedde000cee880000ce8e000cdddc000cddc00000cc00
+-- 051:888c0000888c0000eedc0000eed7c000eeddc000ccddc0000cddc00000cc0000
+-- 052:0000cee8000cedde00ceedde00c88dde00c87ddd000ccddc0000cddc00000cc0
+-- 053:888c0000eedec000eedeec00eed88c00ddd78c00cddcc000cddc00000cc00000
+-- 054:000cedde00ceedde0c88cdde0c87cddd00cc0cdd000000cd0000000c00000000
+-- 055:eedecc00eede88c0eedc78c0dddccc00ddc00000dc000000c000000000000000
+-- 056:0000c5e80000cee8000cedde00ceedde0c88cdde0c87cddd00cc0cdd000000cc
+-- 057:888c0000888c0000eedecc00eede88c0eedc78c0dddccc00ddc00000cc000000
+-- 058:0000cee8000cedde00ceedde00c88dde00c87ddd000ccddc0000cddc00000cc0
+-- 059:888c0000eedec000eedeec00eed88c00ddd78c00cddcc000cddc00000cc00000
+-- 064:000000000000000000000000000000000000cccc000c888800c8888800c888bb
+-- 065:00000000000000000000000000000000cccc00008888c000bbbbbc00bbbbbc00
+-- 066:00000000000000000000000000000ccc000cc88800c8888800c888bb0cbb888b
+-- 067:000000000000000000000000ccc00000888cc000bbbbbc00bbbbbc00bbbbbbc0
+-- 068:0000000000000000000000cc0000cc88000c888800c88bbb00c888bb0cbb8888
+-- 069:0000000000000000cc00000088cc0000bbbbc000bbbbbc00bbbbbc00888bbbc0
+-- 070:00000000000000000000000000000ccc000cc88800c8888800c888bb0cbb888b
+-- 071:000000000000000000000000ccc00000888cc000bbbbbc00bbbbbc00bbbbbbc0
+-- 080:0cbb888b0cbbb8abcbbbaacacbaaaaaacbaaaaaacaaaaaaa0caaaaaa00ccccac
+-- 081:88bbbbc0b8abbbc0aacabbbcaaaaacbcaaaaacbcaaaaccc0aacccc00cccc0000
+-- 082:0cbbb888cbbba8aacbaaaacacbaaaaaacbaaaaaacaaaaaaa0caaaaaa00ccccac
+-- 083:888bbbc0a8aabbbcaacaaabcaaaaacbcaaaaccbcaaacccc0aacccc00cccc0000
+-- 084:0cbba8aa0cbaaaca0cbaaaaa0cbaaaaa0caaaaaa0caaaaaa00ccccac00000ccc
+-- 085:a8aabbc0aacaabc0aaaacbc0aaaacbc0aaaccac0aacccac0cccccc00ccc00000
+-- 086:0cbbb8a8cbbbaacacbaaaaaacbaaaaaacbaaaaaacaaaaaaa0caaaaaa00ccccac
+-- 087:88abbbc0aacabbbcaaaaaabcaaaaacbcaaaaccbcaaacccc0aacccc00cccc0000
+-- 088:0000000000000000000ccccc00c888880cbb888bcbaaaaaacbaaaaaa0caaaaaa
+-- 089:0000000000000000ccccc000bbbbbc00bbbbbbc0aaaaaabcaaaaccbcaaccccc0
+-- 096:00000000000000000000000000000000000000000000888800088888000888ee
+-- 097:000000000000000000000000000000000000000088880000eeeee000eeeee000
+-- 098:00000000000000000000000000000000000000000000088800088888000888ee
+-- 099:000000000000000000000000000000000000000088800000eeeeee00eeeeee00
+-- 100:000000000000000000000000000000000000000000000000008888880888eeee
+-- 101:00000000000000000000000000000000000000000000000088eee000eeeeee00
+-- 102:000000000000000000000000000000000000000000000888000888ee00888eee
+-- 103:000000000000000000000000000000000000000088800000eeeeee00eeeeee00
+-- 112:00ee888e00eeeeee0eeedddd0edddddd0edddddd0ddddddd00dddddd0000ccdc
+-- 113:88eeee00eee8de00ddddcee0dddddce0dddddce0ddddccc0ddcccc00cccc0000
+-- 114:00ee888e00eeeeee0eeedddd0edddddd0edddddd0ddddddd00dddddd0000ccdc
+-- 115:e88eeee0eeee8de0dddddceeddddddceddddddcedddddccddddcccc0ccccc000
+-- 116:ee888e8eeeeeeeeeeedddddddddddddddddddddddddddddddddddddd00ccdccc
+-- 117:e88eeee0eeee8de0dddddceeddddddceddddddcedddddcccdddcccc0ccccc000
+-- 118:0ee888ee0eeeeeeeeeedddddedddddddeddddddddddddddd0ddddddd000ccdcc
+-- 119:e88eeee0eeee8de0dddddceeddddddceddddddcedddddcccdddcccc0ccccc000
+-- 240:0000000004400430444444434444444304444430004443000004300000000000
+-- 241:000000000cc00cc0c11cc19cc111119c0c1119c000c19c00000cc00000000000
 -- </SPRITES>
 
 -- <MAP>
--- 000:040000000000000000000000000000000000000000000000000000000004040000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
--- 011:000000000000000000000000000000000000000000000f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
--- 013:000000000000000000202020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
--- 016:101010101010101010101010101010101010101010101010101010101010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
--- 033:040000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 001:0000000000000000000000000000d1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 003:000000000000000000d0d1e00000000000e2d0e0f0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 004:000000000000000000d1e1f10000000000c1d1e1f1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 005:000000000000000000000000000000000000d2e2f2000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 007:000000000000000000000000000000000000000000000000000000000054003300550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 008:000000000000000000000000000000000000000000000000000000000001112131616141000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 009:000000000000000000000000000000000000000000000000000000000002101210103293000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 010:000000000000000000000000000000000000000000000000000030405003108383839300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 011:0000000000000000a5f50000000000000000000000000000000000000004920000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 012:0000002313131313a6f6230033001300540000000000000000005474640292000f006500000000000000011121311121310000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 013:11213111213111213111213111213111213111410d0d0d0d0d0111213195106171817191000000000001950000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 014:10101010321010101010321010101010321010420e0e0e0e0e0210101010106210107292000000000195000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 015:101210321010121072101010101210821010101210101010101010121010101010221092000000019500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 016:101010101010101010101010101012101032101010108210103210106210101082101085112131950000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 033:040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 -- 050:000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
--- 072:000000000000000400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 -- </MAP>
 
 -- <WAVES>
@@ -1234,7 +1115,7 @@ fps=FPS:new()
 -- </SFX>
 
 -- <FLAGS>
--- 000:00102000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+-- 000:00102020202000000000000000000000101010101010101010100000000000001010101010101010101000000000000010000000101010101010000000000000100000001000000000000000000000001010101010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 -- </FLAGS>
 
 -- <SCREEN>
@@ -1296,6 +1177,6 @@ fps=FPS:new()
 -- </SCREEN>
 
 -- <PALETTE>
--- 000:1a1c2c0f380f3062308bac0f9bbc0f1a1c2c38b764ff000029366f3b5dc941a6f673eff7f4f4f494b0c2566c86101c2c
+-- 000:0000009d9d9dffffffbe2633e06f8b493c2ba46422eb8931f7e26b2f484e44891aa3ce271b263200578431a2f2b2dcef
 -- </PALETTE>
 
